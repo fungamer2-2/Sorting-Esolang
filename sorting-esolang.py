@@ -446,5 +446,5 @@ andthen
 while
 """
 
-run(code, a, debug=True)
+run(bubble_sort, a, debug=True)
 print(a)
