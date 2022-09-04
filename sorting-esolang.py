@@ -1,7 +1,7 @@
 #My own stack-based esolang
 #For implementing sorting algorithms
 
-import operator
+import operator, random
 from abc import ABC, abstractmethod
 
 class Callable(ABC):
@@ -107,7 +107,67 @@ class IfStatement(Callable):
 		
 	def __repr__(self):
 		return f"If({self.cond}, {self.func})"
+
+class IfElse(Callable):
+	
+	def __init__(self, cond, funcT, funcF):
+		self.cond = cond
+		self.funcT = funcT
+		self.funcF = funcF
 		
+	def eval(self):
+		if self.cond.eval():
+			self.funcT.eval()
+		else:
+			self.funcF.eval()
+		
+	def __repr__(self):
+		return f"IfElse({self.cond}, {self.func})"
+
+class CreateFunc(Callable):
+	
+	def __init__(self, funcs, funcname, params, body):#
+		self.funcs = funcs
+		self.funcname = funcname
+		self.params = params
+		self.body = body
+		
+	def eval(self):
+		name = self.funcname.eval()
+		if self.funcname in self.funcs:
+			raise ValueError(f"function '{name}' already exists")
+		self.funcs[name] = self
+		
+	def __repr__(self):
+		return f"Func({self.funcname}, {self.params}, {self.body})"
+
+class CallFunc(Callable):
+	
+	def __init__(self, funcs, func, args, callstack):
+		self.funcs = funcs
+		self.func = func
+		self.args = args
+		self.callstack = callstack
+		
+	def eval(self):
+		name = self.func.eval()
+		if name not in self.funcs:
+			raise ValueError(f"function '{name}' does not exist")
+		func = self.funcs[name]
+		params_given = len(self.args)
+		params_expected = len(func.params)
+		if params_given != params_expected:
+			raise ValueError(f"function '{name}' expected {params_expected} but got {params_given} arguments")
+		argnames = list(map(lambda s: str(s.val), func.params))
+		args = list(map(lambda s: s.val, self.args))
+		vars = dict(zip(argnames, args))
+		self.callstack.append((func, vars))
+		func.body.eval()
+		self.callstack.pop()
+		
+	def __repr__(self):
+		return f"Call('{self.func}', {self.args})"
+
 class WhileLoop(Callable):
 	
 	def __init__(self, cond, func):
@@ -150,6 +210,20 @@ class Swap(Callable):
 	def __repr__(self):
 		return f"Swap({self.ind1}, {self.ind2})"
 		
+class Random(Callable):
+	
+	def __init__(self, a, b):
+		self.a = a
+		self.b = b
+		
+	def eval(self):
+		a = self.a.eval()
+		b = self.b.eval()
+		return random.randint(a, b)
+		
+	def __repr__(self):
+		return f"Random({self.a}, {self.b})"
+		
 class DeclareVar(Callable):
 	
 	def __init__(self, vars, name):
@@ -183,15 +257,20 @@ class SetVar(Callable):
 
 class GetVar(Callable):
 	
-	def __init__(self, vars, name):
+	def __init__(self, vars, name, callstack):
 		self.vars = vars
 		self.name = name
+		self.callstack = callstack
 		
 	def eval(self):
-		name = self.name.eval()
-		if name not in self.vars:
-			raise ValueError(f"variable '{name}' does not exist")
-		return self.vars[name]
+		vars_check = [self.vars]
+		if len(self.callstack) > 0:
+			vars_check.append(self.callstack[-1][1])
+		for vars in reversed(vars_check):
+			name = self.name.eval()
+			if name in vars:
+				return vars[name]
+		raise ValueError(f"variable '{name}' does not exist") 
 		
 	def __repr__(self):
 		return f"GetVar('{self.name}')"
@@ -229,7 +308,9 @@ class DecrVar(Callable):
 def run(code, arr, debug=False):
 	tokens = code.split()
 	stack = []
+	callstack = []
 	vars = {}
+	funcs = {}
 	i = 0
 	while i < len(tokens):
 		token = tokens[i]
@@ -251,15 +332,37 @@ def run(code, arr, debug=False):
 		elif token == "comp":
 			v2, v1 = stack.pop(), stack.pop()
 			stack.append(Comp(v1, v2))
+		elif token == "rand":
+			b, a = stack.pop(), stack.pop()
+			stack.append(Random(a, b))
 		elif token == "if":
 			func, cond = stack.pop(), stack.pop()
 			stack.append(IfStatement(cond, func))
+		elif token == "ifelse":
+			funcF, funcT, cond = stack.pop(), stack.pop()
+			stack.append(IfElse(cond, funcT, funcF))
 		elif token == "while":
 			func, cond = stack.pop(), stack.pop()
 			stack.append(WhileLoop(cond, func))
 		elif token == "andthen": #Andthen: performs one action before another
 			f2, f1 = stack.pop(), stack.pop()
 			stack.append(AndThen(f1, f2))
+		elif token == "func": 
+			body = stack.pop()
+			args = []
+			while isinstance(stack[-1], Value) and isinstance(stack[-1].val, str):
+				args.append(stack.pop())
+			name = args.pop()
+			args.reverse()
+			stack.append(CreateFunc(funcs, name, args, body))
+		elif token == "call":
+			args = []
+			while isinstance(stack[-1], Value) and isinstance(stack[-1].val, int):
+				args.append(stack.pop())
+			args.reverse()
+			print("Args", args)
+			name = stack.pop()
+			stack.append(CallFunc(funcs, name, args, callstack))
 		elif token == "+":
 			b, a = stack.pop(), stack.pop()
 			stack.append(BinOp(a, b, operator.add, "Add"))
@@ -298,7 +401,7 @@ def run(code, arr, debug=False):
 			stack.append(SetVar(vars, name, value))
 		elif token == "getvar":
 			name = stack.pop()
-			stack.append(GetVar(vars, name))
+			stack.append(GetVar(vars, name, callstack))
 		elif token == "incrvar":
 			name = stack.pop()
 			stack.append(IncrVar(vars, name))
@@ -315,13 +418,14 @@ def run(code, arr, debug=False):
 		item.eval()
 		
 import random
-a = list(range(10))
+a = list(range(15))
 random.shuffle(a)
-print(a)	
+print(a)
+
 
 #Bubble sort
 
-code = """
+bubble_sort = """
 "i" declare
 "i" len 1 - setvar
 "j" declare
@@ -342,5 +446,5 @@ andthen
 while
 """
 
-run(code, a)
+run(code, a, debug=True)
 print(a)
