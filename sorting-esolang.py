@@ -305,6 +305,21 @@ class DecrVar(Callable):
 	def __repr__(self):
 		return f"DecrVar('{self.name}')"
 		
+class IsSorted(Callable):
+	
+	def __init__(self, arr):
+		self.arr = arr
+		
+	def eval(self):
+		arr = self.arr
+		for i in range(len(arr) - 1):
+			if arr[i] > arr[i + 1]:
+				return 0
+		return 1	
+		
+	def __repr__(self):
+		return "IsSorted"
+		
 def run(code, arr, debug=False):
 	tokens = code.split()
 	stack = []
@@ -323,6 +338,8 @@ def run(code, arr, debug=False):
 		elif token == "swap":
 			p2, p1 = stack.pop(), stack.pop()
 			stack.append(Swap(arr, p1, p2))
+		elif token == "sorted":
+			stack.append(IsSorted(arr))
 		elif token == "set":
 			val, ind = stack.pop(), stack.pop()
 			stack.append(SetItem(arr, ind, val))
@@ -446,5 +463,33 @@ andthen
 while
 """
 
-run(bubble_sort, a, debug=True)
+selection_sort = """
+"i" declare
+"i" 0 setvar
+"j" declare
+"m" declare
+"i" getvar len 1 - <
+"m" "i" getvar setvar
+"j" "i" getvar 1 + setvar
+"j" getvar len <
+
+"j" getvar get "m" getvar get <
+"m" "j" getvar setvar
+if 
+"j" incrvar
+andthen
+while
+"i" getvar "m" getvar swap
+"i" incrvar
+andthen
+andthen
+andthen
+
+
+andthen
+
+while
+"""
+
+run(selection_sort, a, debug=True)
 print(a)
