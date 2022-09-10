@@ -305,6 +305,67 @@ class DecrVar(Callable):
 	def __repr__(self):
 		return f"DecrVar('{self.name}')"
 		
+class DeclareAux(Callable):
+	
+	def __init__(self, auxarrs, name, size):
+		self.auxarrs = auxarrs
+		self.name = name
+		self.size = size
+		
+	def eval(self):
+		name = self.name.eval()
+		if name in self.auxarrs:
+			raise ValueError(f"aux array '{name}' already exists")
+		size = self.size.eval()
+		if size < 1:
+			raise ValueError("aux array size must be at least 1")
+		self.auxarrs[name] = [0]*size
+		
+	def __repr__(self):
+		return f"DeclareAux('{self.name}', {self.size})"
+
+class AuxSet(Callable):
+	
+	def __init__(self, auxarrs, name, index, value):
+		self.auxarrs = auxarrs
+		self.name = name
+		self.index = index
+		self.value = value
+		
+	def eval(self):
+		name = self.name.eval()
+		if name not in self.auxarrs:
+			raise ValueError(f"aux array '{name}' does not exist")
+		index = self.index.eval()
+		arr = self.auxarrs[name]
+		if not 0 <= index < len(arr):
+			raise IndexError("aux array index out of range")
+		arr[index] = self.value.eval()
+		
+	def __repr__(self):
+		return f"AuxSet('{self.name}', {self.index}, {self.value})"
+
+class AuxGet(Callable):
+	
+	def __init__(self, auxarrs, name, index):
+		self.auxarrs = auxarrs
+		self.name = name
+		self.index = index
+		
+	def eval(self):
+		name = self.name.eval()
+		if name not in self.auxarrs:
+			raise ValueError(f"aux array '{name}' does not exist")
+		index = self.index.eval()
+		arr = self.auxarrs[name]
+		if not 0 <= index < len(arr):
+			raise IndexError("aux array index out of range")
+		return arr[index]
+		
+	def __repr__(self):
+		return f"AuxGet('{self.name}', {self.index})"
+
+
 class IsSorted(Callable):
 	
 	def __init__(self, arr):
@@ -326,6 +387,7 @@ def run(code, arr, debug=False):
 	callstack = []
 	vars = {}
 	funcs = {}
+	auxarrs = {}
 	i = 0
 	while i < len(tokens):
 		token = tokens[i]
@@ -425,6 +487,15 @@ def run(code, arr, debug=False):
 		elif token == "decrvar":
 			name = stack.pop()
 			stack.append(DecrVar(vars, name))
+		elif token == "declareaux":
+			size, name = stack.pop(), stack.pop()
+			stack.append(DeclareAux(auxarrs, name, size))
+		elif token == "auxset":
+			value, index, name = stack.pop(), stack.pop(), stack.pop()
+			stack.append(AuxSet(auxarrs, name, index, value))
+		elif token == "auxget":
+			index, name = stack.pop(), stack.pop()
+			stack.append(AuxGet(auxarrs, name, index))
 		i += 1
 	
 	if debug:
@@ -472,7 +543,6 @@ selection_sort = """
 "m" "i" getvar setvar
 "j" "i" getvar 1 + setvar
 "j" getvar len <
-
 "j" getvar get "m" getvar get <
 "m" "j" getvar setvar
 if 
@@ -484,12 +554,18 @@ while
 andthen
 andthen
 andthen
-
-
 andthen
-
 while
 """
 
-run(selection_sort, a, debug=True)
+#Aux array testing
+code = """
+"a" 2 declareaux
+"a" 0 42 auxset
+"a" 1 69 auxset
+0 "a" 0 auxget set
+1 "a" 1 auxget set
+"""
+
+run(code, a, debug=True)
 print(a)
